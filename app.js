@@ -32,6 +32,7 @@ function loadData() {
 }
 
 function saveData() {
+  appData.updatedAt = new Date().toISOString();
   localStorage.setItem(STORAGE_KEY, JSON.stringify(appData));
   if (typeof cloudSave === 'function') {
     clearTimeout(window._syncTimer);
@@ -891,6 +892,7 @@ window._uploadBg = function() {
     const dataUrl = await _resizeImage(file, 800, 600);
     localStorage.setItem(IMG_KEYS.BG, dataUrl);
     _applyBg(dataUrl);
+    cloudSave();
     showToast('🖼️ 背景已更新', 'success');
   };
   input.click();
@@ -901,6 +903,7 @@ window._resetBg = function() {
   document.body.classList.remove('has-custom-bg');
   const style = document.getElementById('custom-bg-style');
   if (style) style.remove();
+  cloudSave();
   showToast('🔄 已恢复默认背景', 'success');
 };
 
@@ -914,6 +917,7 @@ window._uploadAvatar = function() {
     const dataUrl = await _resizeImage(file, 200, 200);
     localStorage.setItem(IMG_KEYS.AVATAR, dataUrl);
     _applyAvatar(dataUrl);
+    cloudSave();
     showToast('👤 头像已更新', 'success');
   };
   input.click();
@@ -923,6 +927,7 @@ window._resetAvatar = function() {
   localStorage.removeItem(IMG_KEYS.AVATAR);
   const el = document.querySelector('.player-avatar');
   if (el) { el.innerHTML = '🧙'; }
+  cloudSave();
   showToast('🔄 已恢复默认头像', 'success');
 };
 
@@ -1219,9 +1224,15 @@ async function cloudLoad() {
     const cloudData = JSON.parse(content.data);
     const cloudExp = content.totalExp || 0;
     const localExp = getTotalExp();
+    const cloudTime = new Date(content.updatedAt || 0).getTime();
+    const localTime = new Date(appData.updatedAt || 0).getTime();
 
-    if (cloudExp > localExp) {
+    // 经验值高者胜；相等时以时间戳判定
+    const cloudWins = cloudExp > localExp || (cloudExp === localExp && cloudTime > localTime);
+
+    if (cloudWins) {
       appData = cloudData;
+      appData.updatedAt = content.updatedAt || new Date().toISOString();
       saveDataToLocal();
       // 恢复头像和背景图
       if (content.avatar) localStorage.setItem(IMG_KEYS.AVATAR, content.avatar);
