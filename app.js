@@ -862,7 +862,7 @@ function renderSettings() {
 
 const IMG_KEYS = { AVATAR: 'life-rpg-avatar', BG: 'life-rpg-bg' };
 
-function _resizeImage(file, maxW, maxH) {
+function _resizeImage(file, maxW, maxH, q = 0.5) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = (e) => {
@@ -874,7 +874,7 @@ function _resizeImage(file, maxW, maxH) {
         if (h > maxH) { w = w * maxH / h; h = maxH; }
         canvas.width = w; canvas.height = h;
         canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-        resolve(canvas.toDataURL('image/jpeg', 0.6));
+        resolve(canvas.toDataURL('image/jpeg', q));
       };
       img.src = e.target.result;
     };
@@ -889,7 +889,7 @@ window._uploadBg = function() {
   input.onchange = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    const dataUrl = await _resizeImage(file, 800, 600);
+    const dataUrl = await _resizeImage(file, 400, 300, 0.4);
     localStorage.setItem(IMG_KEYS.BG, dataUrl);
     _applyBg(dataUrl);
     cloudSave();
@@ -914,7 +914,7 @@ window._uploadAvatar = function() {
   input.onchange = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    const dataUrl = await _resizeImage(file, 200, 200);
+    const dataUrl = await _resizeImage(file, 150, 150, 0.5);
     localStorage.setItem(IMG_KEYS.AVATAR, dataUrl);
     _applyAvatar(dataUrl);
     cloudSave();
