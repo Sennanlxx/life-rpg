@@ -1151,11 +1151,15 @@ async function cloudSave() {
     const gistId = await _findGist();
     const json = JSON.stringify(appData);
     const device = _deviceTag();
+    const avatar = localStorage.getItem(IMG_KEYS.AVATAR) || '';
+    const bg = localStorage.getItem(IMG_KEYS.BG) || '';
     const payload = JSON.stringify({
       data: json,
       device,
       totalExp: getTotalExp(),
-      updatedAt: new Date().toISOString()
+      updatedAt: new Date().toISOString(),
+      avatar,
+      bg
     });
 
     if (gistId) {
@@ -1219,6 +1223,10 @@ async function cloudLoad() {
     if (cloudExp > localExp) {
       appData = cloudData;
       saveDataToLocal();
+      // 恢复头像和背景图
+      if (content.avatar) localStorage.setItem(IMG_KEYS.AVATAR, content.avatar);
+      if (content.bg) localStorage.setItem(IMG_KEYS.BG, content.bg);
+      loadImagesFromStorage();
       refreshAll();
       showToast('☁️ 已从云端恢复最新数据', 'success');
       _updateSyncUI('⬇️ 已同步', new Date().toLocaleTimeString());
