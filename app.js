@@ -983,8 +983,8 @@ window._saveGitHubToken = function() {
   localStorage.setItem(SYNC_CONFIG.TOKEN_KEY, token);
   input.value = '';
   showToast('✅ Token 已保存', 'success');
-  // 保存后立刻尝试同步
-  cloudLoad().then(() => renderSettings());
+  // 保存后立刻创建 Gist 并同步
+  cloudSave().then(() => { renderSettings(); showToast('☁️ 首次同步完成', 'success'); });
 };
 
 function getGistId() {
@@ -1075,8 +1075,13 @@ async function cloudLoad() {
   const token = getGitHubToken();
   if (!token) { _updateSyncUI('⚙️ 请先配置 Token', ''); return false; }
 
-  const gistId = await _findGist();
-  if (!gistId) { _updateSyncUI('☁️ 云端无数据', ''); return false; }
+  let gistId = await _findGist();
+  if (!gistId) {
+    // 云端无数据，首次上传
+    await cloudSave();
+    _updateSyncUI('☁️ 首次上传完成', new Date().toLocaleTimeString());
+    return false;
+  }
 
   try {
     const r = await fetch(`https://api.github.com/gists/${gistId}`, {
