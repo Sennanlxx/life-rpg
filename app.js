@@ -806,20 +806,20 @@ function renderSettings() {
       </div>
 
       <div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 12px; margin-bottom: 10px;">
-        <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 6px;">🔑 GitHub Token（每个设备输入一次）</div>
+        <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 6px;">🔑 Gitee Token（每个设备输入一次）</div>
         <div style="display: flex; gap: 8px;">
-          <input type="password" id="gh-token-input" placeholder="ghp_..."
+          <input type="password" id="gitee-token-input" placeholder="输入 Gitee Token..."
             style="flex: 1; background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 8px; border-radius: 6px; font-size: 13px; font-family: monospace;">
-          <button class="settings-btn" onclick="_saveGitHubToken()" style="padding: 8px 16px;">保存</button>
+          <button class="settings-btn" onclick="_saveGiteeToken()" style="padding: 8px 16px;">保存</button>
         </div>
         <div style="font-size: 10px; color: var(--text-muted); margin-top: 4px;">
-          💡 <a href="https://github.com/settings/tokens/new?scopes=gist&description=life-rpg" target="_blank" style="color: var(--accent);">点此创建Token</a>，只勾选 <b>gist</b> 权限即可
+          💡 <a href="https://gitee.com/profile/personal_access_tokens" target="_blank" style="color: var(--accent);">点此创建Token</a>，勾选 <b>projects</b> 权限即可
         </div>
       </div>
 
       <button class="settings-btn" onclick="cloudLoad().then(r => { if(!r) showToast('📡 本地数据已是最新', ''); })">🔄 手动同步</button>
       <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">
-        💡 每个设备输入同一个 Token，数据自动通过 GitHub Gist 同步
+        💡 每个设备输入同一个 Token，国内 Gitee 服务器秒级同步
       </div>
     </div>
 
@@ -1088,134 +1088,107 @@ document.addEventListener('DOMContentLoaded', init);
 // GitHub Gist 云同步
 // ============================================================
 
+// ===== Gitee 云同步（国内秒级）=====
 const SYNC_CONFIG = {
-  GIST_ID_KEY: 'life-rpg-gist-id',
-  TOKEN_KEY: 'life-rpg-github-token',
-  GIST_DESC: 'life-rpg-sync-data'
+  TOKEN_KEY: 'life-rpg-gitee-token',
+  REPO: 'sennanlxx/life-rpg',
+  FILE_PATH: 'sync-data.json'
 };
 
-function getGitHubToken() {
-  return localStorage.getItem(SYNC_CONFIG.TOKEN_KEY);
+function getGiteeToken() {
+  // 兼容旧 GitHub Token key
+  return localStorage.getItem(SYNC_CONFIG.TOKEN_KEY) || localStorage.getItem('life-rpg-github-token');
 }
 
-window._saveGitHubToken = function() {
-  const input = document.getElementById('gh-token-input');
+window._saveGiteeToken = function() {
+  const input = document.getElementById('gitee-token-input');
   const token = input.value.trim();
   if (!token) { showToast('⚠️ 请输入 Token', 'warning'); return; }
   localStorage.setItem(SYNC_CONFIG.TOKEN_KEY, token);
   input.value = '';
   showToast('✅ Token 已保存', 'success');
-  // 保存后立刻创建 Gist 并同步
   cloudSave().then(() => { renderSettings(); showToast('☁️ 首次同步完成', 'success'); });
 };
-
-function getGistId() {
-  return localStorage.getItem(SYNC_CONFIG.GIST_ID_KEY);
-}
 
 function _deviceTag() {
   return /Mobi|Android|iPhone/i.test(navigator.userAgent) ? '📱手机' : '💻Mac';
 }
 
-function _syncHeaders() {
-  const token = getGitHubToken();
-  return {
-    'Authorization': `Bearer ${token}`,
-    'Content-Type': 'application/json',
-    'Accept': 'application/vnd.github.v3+json'
-  };
-}
-
-async function _findGist() {
-  const token = getGitHubToken();
-  if (!token) return null;
-  // 先看缓存
-  const cached = getGistId();
-  if (cached) return cached;
-  // 搜索已有的 Gist
-  try {
-    const r = await fetch('https://api.github.com/gists?per_page=100', {
-      headers: _syncHeaders()
-    });
-    if (!r.ok) return null;
-    const gists = await r.json();
-    const found = gists.find(g => g.description === SYNC_CONFIG.GIST_DESC);
-    if (found) {
-      localStorage.setItem(SYNC_CONFIG.GIST_ID_KEY, found.id);
-      return found.id;
-    }
-  } catch(e) {}
-  return null;
+function _syncUrl() {
+  const token = getGiteeToken();
+  return `https://gitee.com/api/v5/repos/${SYNC_CONFIG.REPO}/contents/${SYNC_CONFIG.FILE_PATH}?access_token=${token}`;
 }
 
 async function cloudSave() {
-  const token = getGitHubToken();
+  const token = getGiteeToken();
   if (!token) return;
 
   try {
-    const gistId = await _findGist();
     const json = JSON.stringify(appData);
-    const device = _deviceTag();
     const avatar = localStorage.getItem(IMG_KEYS.AVATAR) || '';
     const bg = localStorage.getItem(IMG_KEYS.BG) || '';
     const payload = JSON.stringify({
       data: json,
-      device,
+      device: _deviceTag(),
       totalExp: getTotalExp(),
       updatedAt: new Date().toISOString(),
       avatar,
       bg
     });
+    const base64Content = btoa(unescape(encodeURIComponent(payload)));
 
-    if (gistId) {
-      // 更新已有 Gist
-      await fetch(`https://api.github.com/gists/${gistId}`, {
-        method: 'PATCH',
-        headers: _syncHeaders(),
-        body: JSON.stringify({ files: { 'life-rpg-data.json': { content: payload } } })
-      });
-    } else {
-      // 创建新 Gist
-      const r = await fetch('https://api.github.com/gists', {
-        method: 'POST',
-        headers: _syncHeaders(),
-        body: JSON.stringify({
-          description: SYNC_CONFIG.GIST_DESC,
-          public: false,
-          files: { 'life-rpg-data.json': { content: payload } }
-        })
-      });
-      const d = await r.json();
-      if (d.id) localStorage.setItem(SYNC_CONFIG.GIST_ID_KEY, d.id);
-    }
+    // 先获取 sha
+    let sha = '';
+    try {
+      const getR = await fetch(_syncUrl());
+      if (getR.ok) {
+        const d = await getR.json();
+        sha = d.sha || '';
+      }
+    } catch(e) {}
+
+    const body = {
+      access_token: token,
+      content: base64Content,
+      message: `sync: ${_deviceTag()} @ ${new Date().toLocaleTimeString('zh-CN')}`
+    };
+    if (sha) body.sha = sha;
+
+    const method = sha ? 'PUT' : 'POST';
+
+    await fetch(_syncUrl(), {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
     _syncStatus = 'success';
     _updateSyncUI('✅ 已同步', new Date().toLocaleTimeString());
   } catch (e) {
-    console.warn('Gist 同步失败:', e.message);
+    console.warn('同步失败:', e.message);
     _syncStatus = 'error';
     _updateSyncUI('⚠️ 同步失败', '');
   }
 }
 
 async function cloudLoad() {
-  const token = getGitHubToken();
+  const token = getGiteeToken();
   if (!token) { _updateSyncUI('⚙️ 请先配置 Token', ''); return false; }
 
-  let gistId = await _findGist();
-  if (!gistId) {
-    // 云端无数据，首次上传
-    await cloudSave();
-    _updateSyncUI('☁️ 首次上传完成', new Date().toLocaleTimeString());
-    return false;
-  }
-
   try {
-    const r = await fetch(`https://api.github.com/gists/${gistId}`, {
-      headers: _syncHeaders()
-    });
-    if (!r.ok) { _updateSyncUI('⚠️ Token 无效', ''); return false; }
+    const r = await fetch(_syncUrl());
+    if (!r.ok) {
+      // 文件不存在，首次上传
+      if (r.status === 404) {
+        await cloudSave();
+        _updateSyncUI('☁️ 首次上传完成', new Date().toLocaleTimeString());
+        return false;
+      }
+      _updateSyncUI('⚠️ Token 无效', '');
+      return false;
+    }
+
     const d = await r.json();
-    const raw = d.files && d.files['life-rpg-data.json'] ? d.files['life-rpg-data.json'].content : null;
+    const raw = d.content ? decodeURIComponent(escape(atob(d.content))) : null;
     if (!raw) { _updateSyncUI('☁️ 无数据', ''); return false; }
 
     const content = JSON.parse(raw);
@@ -1227,14 +1200,12 @@ async function cloudLoad() {
     const cloudTime = new Date(content.updatedAt || 0).getTime();
     const localTime = new Date(appData.updatedAt || 0).getTime();
 
-    // 经验值高者胜；相等时以时间戳判定
     const cloudWins = cloudExp > localExp || (cloudExp === localExp && cloudTime > localTime);
 
     if (cloudWins) {
       appData = cloudData;
       appData.updatedAt = content.updatedAt || new Date().toISOString();
       saveDataToLocal();
-      // 恢复头像和背景图
       if (content.avatar) localStorage.setItem(IMG_KEYS.AVATAR, content.avatar);
       if (content.bg) localStorage.setItem(IMG_KEYS.BG, content.bg);
       loadImagesFromStorage();
@@ -1248,7 +1219,7 @@ async function cloudLoad() {
       return false;
     }
   } catch (e) {
-    console.warn('Gist 加载失败:', e.message);
+    console.warn('加载失败:', e.message);
     _updateSyncUI('⚠️ 连接失败', '');
     return false;
   }
