@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#0f172a">
+  <title>人生RPG</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+
+  <!-- Toast 通知容器 -->
+  <div class="toast-container"></div>
+
+  <!-- 头部 -->
+  <header class="header">
+    <div class="header-top">
+      <div class="player-info">
+        <div class="player-avatar">🧙</div>
+        <div class="player-name-level">
+          <span class="player-name">勇者</span>
+          <span class="player-level" id="player-level">Lv.1</span>
+        </div>
+      </div>
+      <div class="header-stats">
+        <span id="total-exp">⭐ 0</span>
+      </div>
+    </div>
+    <div class="xp-bar-wrap">
+      <div class="xp-bar-fill" id="xp-bar-fill" style="width: 0%"></div>
+    </div>
+    <div class="xp-bar-text" id="xp-bar-text">0/10 EXP · 0%</div>
+  </header>
+
+  <!-- Tab 导航 -->
+  <nav class="tabs">
+    <button class="tab active" data-tab="dashboard" id="tab-dashboard">🏠 仪表盘</button>
+    <button class="tab" data-tab="tasks" id="tab-tasks">📋 今日任务</button>
+    <button class="tab" data-tab="domains" id="tab-domains">🌐 领域</button>
+    <button class="tab" data-tab="achievements" id="tab-achievements">🏆 成就</button>
+    <button class="tab" data-tab="settings" id="tab-settings">⚙️ 设置</button>
+  </nav>
+
+  <!-- 面板 -->
+  <div class="panel active" id="panel-dashboard"></div>
+  <div class="panel" id="panel-tasks"></div>
+  <div class="panel" id="panel-domains"></div>
+  <div class="panel" id="panel-domain-detail"></div>
+  <div class="panel" id="panel-achievements"></div>
+  <div class="panel" id="panel-settings"></div>
+
+  <!-- 脚本 -->
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+
+</body>
+</html>
