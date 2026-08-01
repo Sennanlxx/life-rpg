@@ -778,6 +778,25 @@ function renderSettings() {
 
   container.innerHTML = `
     <div class="settings-section">
+      <h3>🎨 外观</h3>
+      <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+        <div style="flex: 1; min-width: 140px;">
+          <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 4px;">🖼️ 背景图片</div>
+          <button class="settings-btn" onclick="_uploadBg()" style="width: 100%;">📁 选择图片</button>
+          <button class="settings-btn" onclick="_resetBg()" style="width: 100%; margin-top: 4px; font-size: 11px; padding: 4px;">🔄 恢复默认</button>
+        </div>
+        <div style="flex: 1; min-width: 140px;">
+          <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 4px;">👤 头像</div>
+          <button class="settings-btn" onclick="_uploadAvatar()" style="width: 100%;">📁 选择图片</button>
+          <button class="settings-btn" onclick="_resetAvatar()" style="width: 100%; margin-top: 4px; font-size: 11px; padding: 4px;">🔄 恢复默认</button>
+        </div>
+      </div>
+      <div style="font-size: 10px; color: var(--text-muted); margin-top: 4px;">
+        💡 图片保存在本地浏览器，不会上传到云端
+      </div>
+    </div>
+
+    <div class="settings-section">
       <h3>☁️ 云同步 (GitHub Gist)</h3>
       <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px;">
         <span id="sync-status-text" style="font-size: 13px; color: var(--success);">${hasToken ? '✅ 就绪' : '⚙️ 待配置'}</span>
@@ -836,6 +855,103 @@ function renderSettings() {
       </div>
     </div>
   `;
+}
+
+// ===== 自定义背景 & 头像 =====
+
+const IMG_KEYS = { AVATAR: 'life-rpg-avatar', BG: 'life-rpg-bg' };
+
+function _resizeImage(file, maxW, maxH) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let w = img.width, h = img.height;
+        if (w > maxW) { h = h * maxW / w; w = maxW; }
+        if (h > maxH) { w = w * maxH / h; h = maxH; }
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL('image/jpeg', 0.6));
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+window._uploadBg = function() {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'image/*';
+  input.onchange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const dataUrl = await _resizeImage(file, 800, 600);
+    localStorage.setItem(IMG_KEYS.BG, dataUrl);
+    _applyBg(dataUrl);
+    showToast('🖼️ 背景已更新', 'success');
+  };
+  input.click();
+};
+
+window._resetBg = function() {
+  localStorage.removeItem(IMG_KEYS.BG);
+  document.body.classList.remove('has-custom-bg');
+  const style = document.getElementById('custom-bg-style');
+  if (style) style.remove();
+  showToast('🔄 已恢复默认背景', 'success');
+};
+
+window._uploadAvatar = function() {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'image/*';
+  input.onchange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const dataUrl = await _resizeImage(file, 200, 200);
+    localStorage.setItem(IMG_KEYS.AVATAR, dataUrl);
+    _applyAvatar(dataUrl);
+    showToast('👤 头像已更新', 'success');
+  };
+  input.click();
+};
+
+window._resetAvatar = function() {
+  localStorage.removeItem(IMG_KEYS.AVATAR);
+  const el = document.querySelector('.player-avatar');
+  if (el) { el.innerHTML = '🧙'; }
+  showToast('🔄 已恢复默认头像', 'success');
+};
+
+function _applyBg(dataUrl) {
+  document.body.classList.add('has-custom-bg');
+  const style = document.getElementById('custom-bg-style') || (() => {
+    const s = document.createElement('style');
+    s.id = 'custom-bg-style';
+    document.head.appendChild(s);
+    return s;
+  })();
+  style.textContent = `body.has-custom-bg::after { background-image: url(${dataUrl}); }`;
+}
+
+function _applyAvatar(dataUrl) {
+  const el = document.querySelector('.player-avatar');
+  if (!el) return;
+  el.innerHTML = '';
+  const img = document.createElement('img');
+  img.src = dataUrl;
+  el.appendChild(img);
+}
+
+function loadImagesFromStorage() {
+  const avatar = localStorage.getItem(IMG_KEYS.AVATAR);
+  if (avatar) _applyAvatar(avatar);
+
+  const bg = localStorage.getItem(IMG_KEYS.BG);
+  if (bg) _applyBg(bg);
 }
 
 function handleReset() {
@@ -944,6 +1060,7 @@ function updateHeader() {
 
 function init() {
   loadData();
+  loadImagesFromStorage();
 
   // 绑定 tab
   document.querySelectorAll('.tab').forEach(tab => {
