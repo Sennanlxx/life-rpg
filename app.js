@@ -33,6 +33,10 @@ function loadData() {
 
 function saveData() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(appData));
+  if (typeof cloudSave === 'function') {
+    clearTimeout(window._syncTimer);
+    window._syncTimer = setTimeout(() => cloudSave(), 500);
+  }
 }
 
 function resetData() {
@@ -768,8 +772,39 @@ function renderSettings() {
   const container = document.getElementById('panel-settings');
   const dataSize = JSON.stringify(appData).length;
   const logCount = appData.taskLog.length;
+  const syncCode = getSyncCode();
 
   container.innerHTML = `
+    <div class="settings-section">
+      <h3>☁️ 云同步 (Bmob)</h3>
+      <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px;">
+        <span id="sync-status-text" style="font-size: 13px; color: var(--success);">✅ 就绪</span>
+        <span id="sync-status-time" style="font-size: 11px; color: var(--text-muted);"></span>
+      </div>
+
+      <div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 12px; margin-bottom: 10px;">
+        <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 4px;">📡 你的同步码（跨设备共享）</div>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <code style="font-size: 22px; font-weight: bold; color: var(--accent); letter-spacing: 3px; font-family: monospace;">${syncCode}</code>
+          <button class="settings-btn" style="padding: 4px 10px; font-size: 11px;" onclick="navigator.clipboard.writeText('${syncCode}'); showToast('📋 已复制同步码', 'success');">复制</button>
+        </div>
+      </div>
+
+      <div style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 12px; margin-bottom: 10px;">
+        <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 6px;">🔗 绑定其他设备</div>
+        <div style="display: flex; gap: 8px;">
+          <input type="text" id="bind-input" placeholder="输入6位同步码" maxlength="6" 
+            style="flex: 1; background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 8px; border-radius: 6px; font-size: 14px; text-transform: uppercase; letter-spacing: 2px; text-align: center;">
+          <button class="settings-btn" onclick="_doBind()" style="padding: 8px 16px;">绑定</button>
+        </div>
+      </div>
+
+      <button class="settings-btn" onclick="cloudLoad().then(r => { if(!r) showToast('📡 本地数据已是最新', ''); })">🔄 手动同步</button>
+      <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">
+        💡 数据自动同步。在其他设备输入同一同步码即可共享进度
+      </div>
+    </div>
+
     <div class="settings-section">
       <h3>📊 数据统计</h3>
       <div style="font-size: 13px; color: var(--text-secondary);">
@@ -803,6 +838,18 @@ function renderSettings() {
       </div>
     </div>
   `;
+}
+
+// 绑定同步码
+function _doBind() {
+  const input = document.getElementById('bind-input');
+  if (!input) return;
+  const code = input.value.trim().toUpperCase();
+  if (code.length !== 6) {
+    showToast('⚠️ 请输入6位同步码', '');
+    return;
+  }
+  bindSyncCode(code);
 }
 
 function handleReset() {
@@ -921,10 +968,153 @@ function init() {
 
   updateHeader();
   switchTab('dashboard');
+
+  // 启动时从云端同步
+  setTimeout(() => cloudLoad(), 1000);
 }
 
 // 页面加载完成后初始化
 document.addEventListener('DOMContentLoaded', init);
+
+// ============================================================
+// Bmob 云同步
+// ============================================================
+
+const BMOB = {
+  APP_ID: 'bee9ddef0803355b3fb37184822713f7',
+  API_KEY: '4f2bc1ca2611e0afdba22edf72f9ffd4',
+  BASE: 'https://api2.bmob.cn/1'
+};
+
+const SYNC_CODE_KEY = 'life-rpg-sync-code';
+let _syncStatus = 'idle'; // idle | syncing | success | error
+
+function getSyncCode() {
+  let code = localStorage.getItem(SYNC_CODE_KEY);
+  if (!code) {
+    code = _genCode();
+    localStorage.setItem(SYNC_CODE_KEY, code);
+  }
+  return code;
+}
+
+function setSyncCode(code) {
+  localStorage.setItem(SYNC_CODE_KEY, code.toUpperCase());
+}
+
+function _genCode() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let s = '';
+  for (let i = 0; i < 6; i++) s += chars[Math.floor(Math.random() * chars.length)];
+  return s;
+}
+
+function _deviceTag() {
+  return /Mobi|Android|iPhone/i.test(navigator.userAgent) ? '📱手机' : '💻Mac';
+}
+
+function _bmobHeaders() {
+  return {
+    'X-Bmob-Application-Id': BMOB.APP_ID,
+    'X-Bmob-REST-API-Key': BMOB.API_KEY,
+    'Content-Type': 'application/json'
+  };
+}
+
+async function cloudSave() {
+  try {
+    const code = getSyncCode();
+    const json = JSON.stringify(appData);
+    const device = _deviceTag();
+
+    // 查询是否已有记录
+    const q = await fetch(`${BMOB.BASE}/classes/GameData?where={"syncCode":"${code}"}&limit=1`, {
+      headers: _bmobHeaders()
+    });
+    const qr = await q.json();
+
+    if (qr.results && qr.results.length > 0) {
+      // 更新
+      await fetch(`${BMOB.BASE}/classes/GameData/${qr.results[0].objectId}`, {
+        method: 'PUT',
+        headers: _bmobHeaders(),
+        body: JSON.stringify({ data: json, device, totalExp: getTotalExp() })
+      });
+    } else {
+      // 新建
+      await fetch(`${BMOB.BASE}/classes/GameData`, {
+        method: 'POST',
+        headers: _bmobHeaders(),
+        body: JSON.stringify({ syncCode: code, data: json, device, totalExp: getTotalExp() })
+      });
+    }
+    _syncStatus = 'success';
+    _updateSyncUI('✅ 已同步', new Date().toLocaleTimeString());
+  } catch (e) {
+    console.warn('云同步失败:', e.message);
+    _syncStatus = 'error';
+    _updateSyncUI('⚠️ 同步失败', '');
+  }
+}
+
+async function cloudLoad() {
+  try {
+    const code = getSyncCode();
+    const r = await fetch(`${BMOB.BASE}/classes/GameData?where={"syncCode":"${code}"}&order=-updatedAt&limit=1`, {
+      headers: _bmobHeaders()
+    });
+    const d = await r.json();
+
+    if (!d.results || d.results.length === 0) {
+      _updateSyncUI('☁️ 云端无数据', '');
+      return false;
+    }
+
+    const cloud = JSON.parse(d.results[0].data);
+    const cloudExp = d.results[0].totalExp || 0;
+    const localExp = getTotalExp();
+
+    if (cloudExp > localExp) {
+      appData = cloud;
+      saveDataToLocal();
+      refreshAll();
+      showToast('☁️ 已从云端恢复最新数据', 'success');
+      _updateSyncUI('⬇️ 已同步', new Date().toLocaleTimeString());
+      return true;
+    } else {
+      await cloudSave();
+      _updateSyncUI('✅ 本地已最新', new Date().toLocaleTimeString());
+      return false;
+    }
+  } catch (e) {
+    console.warn('云端加载失败:', e.message);
+    _updateSyncUI('⚠️ 连接失败', '');
+    return false;
+  }
+}
+
+// 不触发云同步的纯本地保存
+function saveDataToLocal() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(appData));
+}
+
+function _updateSyncUI(text, time) {
+  const el = document.getElementById('sync-status-text');
+  if (el) el.textContent = text;
+  const t = document.getElementById('sync-status-time');
+  if (t) t.textContent = time;
+}
+
+function getDeviceSyncCode() {
+  return getSyncCode();
+}
+
+function bindSyncCode(code) {
+  setSyncCode(code);
+  showToast('🔗 同步码已绑定: ' + code, 'success');
+  cloudLoad();
+  renderSettings();
+}
 
 // 注册 Service Worker
 if ('serviceWorker' in navigator) {
